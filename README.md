@@ -1,5 +1,4 @@
 # EDjumpilot v.0.0.1
-----
 
 EDjumpilot is a python script to jump on a plotted route in the game Elite Dangerous. I wrote this script to facilitate the most stupid activity in the game what is jumps. Jumping is the most boring activity in the game, so I didn't want to spoil the game and never back. Suggestions welcome.
 
