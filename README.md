@@ -24,17 +24,18 @@ Installation / configuration
  2. Install the required libraries used by script if you do not have them (ctypes, pynput, pytesseract, numpy, PIL)
  3. Edit jumpilot.py and configure options in your own way (lines: 14 - 71). 
     (For now all settings are for Anaconda and screen resolution FullHD)
- 4. If you want, edit jumpilot.py and change options for buttons in lines: 153 -168 or change buttons settings in the game:
+ 4. Use default HUD colour and set interface brightness to full. (System panels (default:4) -> Functions -> INTERFACE BRIGHTNESS)
+ 5. If you want, edit jumpilot.py and change options for buttons in lines: 153 -168 or change buttons settings in the game:
 
 | Button | Description |
 | ------ | ------ |
 | W | increase throttle / ui panel up |
 | S | ui panel down |
 | D | ui panel right |
+| B | throttle 75% |
 | C | throttle 25% |
 | V | throttle 0% |
 | T | target next system in route |
-| B | throttle 75% |
 | M | hyperspace jump |
 | 1 | target panel |
 | SPACE | ui panel select |
@@ -64,6 +65,7 @@ Todos
  - code improvements
  - delete the pytesseract library (I want use only OpenCV)
  - add a screen resolution configuration
+ - add option for HUD colour
 
 License
 ----

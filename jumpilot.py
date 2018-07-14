@@ -153,10 +153,10 @@ class Buttons:  # http://www.gamespp.com/directx/directInputKeyboardScanCodes.ht
     W = 0x11  # increase throttle / ui panel up
     S = 0x1F  # ui panel down
     D = 0x20  # ui panel right
+    B = 0x30  # throttle 75%
     C = 0x2E  # throttle 25%
     V = 0x2F  # throttle 0%
     T = 0x14  # target next system in route
-    B = 0x30  # throttle 75%
     M = 0x32  # hyperspace jump
     BUTTON_1 = 0x02  # target panel
     SPACE = 0x39  # ui panel select
