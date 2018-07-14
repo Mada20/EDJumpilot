@@ -49,8 +49,9 @@ Instructions
  1. Run the jumpilot.py script. <https://www.pythoncentral.io/execute-python-script-file-shell/>
  2. Run the game and calculate the route (plot route). 
  3. Check if the navigation tab is selected in target panel.
- 3. Click F5 to run the script. (F5, if you have not changed it)
- 4. Click F8 to finish the script. (F8, if you have not changed it)
+ 4. Engage Supercruise.
+ 5. Click F5 to run the script. (F5, if you have not changed it)
+ 6. Click F8 to finish the script. (F8, if you have not changed it)
 
 Warnings
 ----
