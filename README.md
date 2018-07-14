@@ -9,6 +9,10 @@ Features
  - avoiding / leaving a star
  - jumping if next destination exist
 
+Example
+----
+<https://youtu.be/wWtGXanKhYw>
+
 Requirements
 ----
  - Python 2.7.15
