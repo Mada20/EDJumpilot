@@ -12,7 +12,7 @@ from random import randint
 
 
 ##### options #####
-debug = False
+debug = True
 
 ### refuel options ###
 min_refuel = 90  # min width of fuel when can be refuel
@@ -37,16 +37,16 @@ radar_crop_y1 = 760
 radar_crop_y2 = 960
 
 ### scanning options ###
-scan_surface_time = 8
-scan_system_time = 12
+scan_surface_time = 6
+scan_system_time = 8
 
 ### jump options ###
-jump_load_time = 12
+jump_load_time = 14
 # crop options where is jump info #
 in_jump_crop_x1 = 1120
-in_jump_crop_x2 = 1150
+in_jump_crop_x2 = 1160
 in_jump_crop_y1 = 870
-in_jump_crop_y2 = 890
+in_jump_crop_y2 = 910
 
 ### danger zone options ###
 # crop options of danger zone #
@@ -64,7 +64,7 @@ avoid_speed_fast = 2  # avoid speed after refuel - it's time of keys pressed
 
 ### menu options ###
 # crop options where is menu after star choose #
-select_menu_x1 = 410 
+select_menu_x1 = 410
 select_menu_x2 = 520
 select_menu_y1 = 535
 select_menu_y2 = 565
@@ -140,6 +140,7 @@ def release_key(hexKeyCode):
     x = Input(ctypes.c_ulong(1), ii_)
     SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))
 
+
 def click_keys(keys, t):
     for key in keys:
         press_key(key)
@@ -148,6 +149,7 @@ def click_keys(keys, t):
 
     for key in keys:
         release_key(key)
+
 
 class Buttons:  # http://www.gamespp.com/directx/directInputKeyboardScanCodes.html
     W = 0x11  # increase throttle / ui panel up
@@ -170,15 +172,17 @@ class Buttons:  # http://www.gamespp.com/directx/directInputKeyboardScanCodes.ht
 
 class State(Enum):
     INIT = 0
-    RUN = 1
-    CHECK_REFUEL = 2
-    REFUELING = 3
-    AVOID = 4
-    CHECK_DANGER_ZONE = 5
-    GO = 6
-    JUMP = 7
-    JUMPING = 8
-    JUMPED = 9
+    TURN_FORWARD = 1
+    TURN_AROUND = 2
+    CHECK_REFUEL = 3
+    REFUELING = 4
+    AVOID = 5
+    AUTO_REFUEL = 6
+    AUTO_REFUELING = 7
+    GO = 8
+    JUMP = 9
+    JUMPING = 10
+    JUMPED = 11
     END = -1
     STOP = -2
 
@@ -202,21 +206,6 @@ def get_frame():
     img_numpy = np.array(img)
     frame = cv2.cvtColor(img_numpy, cv2.COLOR_BGR2RGB)
     return frame
-
-
-def rand_rotate(time):
-    pos = randint(1, 4)
-    key = None
-    if pos == 1:
-        key = Buttons.NP_2
-    elif pos == 2:
-        key = Buttons.NP_4
-    elif pos == 3:
-        key = Buttons.NP_6
-    elif pos == 4:
-        key = Buttons.NP_8
-
-    click_keys([key], time)
 
 
 def center_ship(back=False):
@@ -479,7 +468,7 @@ def select_first_star():
 
     text = None
     try:
-        text = pytesseract.image_to_string(gray)
+        text = pytesseract.image_to_string(gray, config='tessedit_char_whitelist=CKLNOU')
         try:
             print 'SELECTED STAR TEXT: ' + text
         except:
@@ -504,14 +493,16 @@ def select_first_star():
     return result
 
 
-def get_danger_zone_mask():
+def avoid(last_keys=None, speed=1):
+    global debug
     global danger_zone_crop_x1
     global danger_zone_crop_x2
     global danger_zone_crop_y1
     global danger_zone_crop_y2
+    global avoid_center_x
+    global avoid_center_y
 
     frame = get_frame()
-
     crop = frame[danger_zone_crop_y1:danger_zone_crop_y2, danger_zone_crop_x1:danger_zone_crop_x2]
 
     lower_mask = np.array([60, 60, 60])
@@ -523,39 +514,6 @@ def get_danger_zone_mask():
     dilation = cv2.dilate(erosion, kernel, iterations=20)
 
     mask = dilation
-
-    return mask, crop
-
-
-def in_danger_zone():
-    global debug
-
-    mask, crop = get_danger_zone_mask()
-
-    _, contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    w = 0
-    h = 0
-    if len(contours) > 0:
-        contour = max(contours, key=cv2.contourArea)
-        if debug:
-            cv2.drawContours(crop, [contour], 0, (255, 255, 0), 1)
-        (_, _), (width, height), _ = cv2.minAreaRect(contour)
-        w = width
-        h = height
-
-    if debug:
-        cv2.imshow('Debug', cv2.resize(join_images(crop, cv2.cvtColor(mask, cv2.COLOR_GRAY2RGB), True), (0, 0), fx=0.5, fy=0.5))
-
-    return w > 400 and h > 400
-
-
-def avoid(last_keys=None, speed=1):
-    global debug
-    global avoid_center_x
-    global avoid_center_y
-
-    mask, crop = get_danger_zone_mask()
 
     _, contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -665,34 +623,30 @@ def can_refuel():
 
     text = None
     try:
-        text = pytesseract.image_to_string(gray)
+        text = pytesseract.image_to_string(gray, config='tessedit_char_whitelist=ABFGKNOSU')
     except:
         print 'CAN\'T FIND STAR TEXT...'
 
     star_type = None
     if text is not None:
         text = text[:1].upper()
-
-        if "O" in text or "B" in text or "A" in text or "F" in text or "G" in text or "K" in text or "M" in text:
-            star_type = text
-            if debug:
-                try:
-                    print 'STAR TYPE IS: ' + text
-                except:
-                    print 'WARNING: PROBLEM WITH TEXT PRINT'
-            result = True
-        elif "S" in text or "UN" in text:
-            if debug:
-                try:
-                    print 'STAR SCANNING, FOUNDED: ' + text
-                except:
-                    print 'WARNING: PROBLEM WITH TEXT PRINT'
-            time.sleep(scan_surface_time)
-        else:
-            try:
-                print 'WARNING, STAR TYPE FOUNDED: ' + text
-            except:
-                print 'WARNING: PROBLEM WITH TEXT PRINT'
+        try:
+            if "O" in text or "B" in text or "A" in text or "F" in text or "G" in text or "K" in text or "M" in text:
+                star_type = text
+                print 'STAR TYPE IS: ' + text
+                result = True
+            elif "S" in text:
+                print 'STAR SCAN, FOUNDED: ' + text
+                time.sleep(scan_surface_time)
+            elif "U" in text:
+                print 'STAR IS UNKNOWN, WHY?'
+            else:
+                if not text:
+                    print 'WARNING, STAR TYPE NOT FOUNDED: ' + text
+                else:
+                    print 'STAR TYPE NOT FOUNDED: ' + text
+        except:
+            print 'WARNING: PROBLEM WITH TEXT IN STAR FINDING'
 
     if debug:
         cv2.imshow('Debug', gray)
@@ -738,8 +692,23 @@ def start_scan():
     r.start()
 
 
+def jump_fail():
+    global state
+    global count
+    global jump_started
+
+    print 'ERROR: JUMP FAILURE!!!'
+
+    click_keys([Buttons.M], 0.1)
+    click_keys([Buttons.V], 0.1)
+
+    count = 0
+    jump_started = False
+    state = State.JUMP
+
+
 start = True
-star = False
+is_star_centered = False
 last_back_keys = None
 count = 0
 refueling_count = 0
@@ -747,7 +716,34 @@ avoid_speed = 0.5
 star_type = None
 jump_started = False
 fail_jumps = 0
+jump_timer = None
 state = State.INIT
+
+
+def reset():
+    global start
+    global is_star_centered
+    global last_back_keys
+    global count
+    global refueling_count
+    global avoid_speed
+    global star_type
+    global jump_started
+    global fail_jumps
+    global jump_timer
+    global state
+
+    start = True
+    is_star_centered = False
+    last_back_keys = None
+    count = 0
+    refueling_count = 0
+    avoid_speed = 0.5
+    star_type = None
+    jump_started = False
+    fail_jumps = 0
+    jump_timer = None
+    state = State.INIT
 
 
 def on_press(key):
@@ -760,9 +756,9 @@ def on_press(key):
     global button_end
 
     if key == button_startstop and state == State.INIT:
-        state = State.RUN
+        state = State.TURN_FORWARD
     elif key == button_startstop:
-        state = State.INIT
+        reset()
     elif key == button_debug:
         debug = not debug
     elif key == button_jump:
@@ -778,26 +774,31 @@ listener.start()
 while(True):
     if state.value > 0:
         if start:
-            print 'STARTED'
+            print 'STARTED: version 0.0.2'
             start = False
             start_scan()
             select_first_star()
             time.sleep(1)
-        if state == State.RUN:
-            print 'RUN: ' + str(count)
+        if state == State.TURN_FORWARD:
+            print 'TURN FORWARD: ' + str(count)
             if center_ship():
                 count += 1
             else:
                 count = 0
 
             if count > 10:
-                print 'RUN FINISHED'
+                print 'TURNING FINISHED'
                 count = 0
-                star = True
+                is_star_centered = True
                 state = State.CHECK_REFUEL
         elif state == State.CHECK_REFUEL:
             print 'CHECK REFUEL: ' + str(count)
-            can, star_type = can_refuel()
+
+            if star_type is None:
+                can, s_type = can_refuel()
+                if s_type is not None:
+                    star_type = s_type
+
             if can and need_refuel():
                 count += 1
             else:
@@ -844,7 +845,7 @@ while(True):
             print 'AVOID: ' + str(count)
             runned, last_back_keys = avoid(last_back_keys, avoid_speed)
             if runned:
-                star = False
+                is_star_centered = False
                 count = 0
             else:
                 count += 1
@@ -854,35 +855,41 @@ while(True):
                 print 'AVOIDED'
                 count = 0
 
-                if star or star_type is None:
+                if is_star_centered or star_type is None:
                     print 'WARNING: TRY GO AWAY...'
-                    rotate = 0
-                    while(rotate < 5 and state.value > 0):
-                        print 'WARNING: TRY GO AWAY: ' + str(rotate)
-                        if not center_ship(True):
-                            rotate = 0
-                        else:
-                            rotate += 1
-                        cv2.waitKey(25)
+                    state = state.TURN_AROUND
+                else:
+                    state = State.AUTO_REFUEL
 
-                    star = False
+                star_type = None
 
-                state = State.CHECK_DANGER_ZONE
-        elif state == State.CHECK_DANGER_ZONE:
-            print 'CHECK DANGER ZONE: ' + str(count)
-            if in_danger_zone():
-                print 'RAND ROTATE...'
-                rand_rotate(5)
+        elif state == state.TURN_AROUND:
+            print 'TURN AROUND: ' + str(count)
+            if center_ship(True):
+                count += 1
+            else:
+                count = 0
+
+            if count > 5:
+                print 'TURNING BACK FINISHED'
+                count = 0
+                is_star_centered = True
+                state = State.AUTO_REFUEL
+        elif state == State.AUTO_REFUEL:
+            print 'AUTO REFUEL?'
+            click_keys([Buttons.C], 0.1)
+            state = State.AUTO_REFUELING
+        elif state == State.AUTO_REFUELING:
+            print 'AUTO REFUELING: ' + str(count)
+            if is_refueling():
+                print 'AUTO REFUELING DETECTED'
+                count = 5
             else:
                 count += 1
-                click_keys([Buttons.C], 1)
-
-            if is_refueling():
-                print 'AUTO REFUELING'
-                count = 5
+                time.sleep(1)
 
             if count > 10:
-                print 'DANGER ZONE CLEAR'
+                print 'AUTO REFUELING FINISHED'
                 count = 0
                 click_keys([Buttons.W], 10)
                 click_keys([Buttons.V], 0.1)
@@ -901,12 +908,10 @@ while(True):
             if count > 5:
                 print 'JUMPING!'
                 count = 0
-                if in_danger_zone():
-                    state = State.AVOID
-                else:
-                    jump_started = False
-                    click_keys([Buttons.M], 0.1)
-                    state = State.JUMPING
+                jump_started = False
+                click_keys([Buttons.M], 0.1)
+                state = State.JUMPING
+
         elif state == State.JUMPING:
             print 'JUMPING: ' + str(count)
             if is_jumping():
@@ -914,9 +919,13 @@ while(True):
                     jump_started = True
                     time.sleep(jump_load_time)
                     click_keys([Buttons.W], 2)
+                    jump_timer = Timer(60, jump_fail)
+                    jump_timer.start()
+
                 count = 0
             else:
                 count += 1
+
             if count > 100:
                 count = 0
                 if not jump_started:
@@ -930,10 +939,10 @@ while(True):
                         state = State.AVOID
                 else:
                     print 'IN JUMP!'
+                    jump_timer.cancel()
                     fail_jumps = 0
                     state = State.JUMPED
-            elif count is 0:
-                center_ship()
+
         elif state == State.JUMPED:
             print 'JUMPED: ' + str(count)
             click_keys([Buttons.V], 0.1)
@@ -948,12 +957,14 @@ while(True):
                 start_scan()
                 select_first_star()
                 time.sleep(1)
-                state = State.RUN
+                state = State.TURN_FORWARD
     else:
         cv2.destroyWindow('Debug')
 
     if state == State.END:
         cv2.destroyAllWindows()
+        if jump_timer is not None:
+            jump_timer.cancel()
         break
 
     cv2.waitKey(25)
