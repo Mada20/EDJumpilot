@@ -1,4 +1,4 @@
-# EDjumpilot v.0.0.2
+# EDjumpilot v.0.0.3
 
 EDjumpilot is a python script to jump on a plotted route in the game Elite Dangerous. I wrote this script to facilitate the most stupid activity in the game what is jumps. Jumping is the most boring activity in the game, so I didn't want to spoil the game and never back. Suggestions welcome.
 
@@ -29,7 +29,8 @@ Installation / configuration
  3. Edit jumpilot.py and configure options in your own way (lines: 14 - 71). 
     (For now all settings are for Anaconda and screen resolution FullHD)
  4. Use default HUD colour and set interface brightness to full. (System panels (default:4) -> Functions -> INTERFACE BRIGHTNESS)
- 5. If you want, edit jumpilot.py and change options for buttons in lines: 154 -170 or change buttons settings in the game:
+ 5. TODO: Ustaw scanner na atak
+ 6. If you want, edit jumpilot.py and change options for buttons in lines: 154 -170 or change buttons settings in the game:
 
 | Button | Description |
 | ------ | ------ |
