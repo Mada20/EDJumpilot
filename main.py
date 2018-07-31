@@ -6,14 +6,13 @@ from enum import Enum
 from threading import Timer
 from random import randint
 from pynput.keyboard import Key, Listener
-import pytesseract
 
 from controls import Buttons, press_key, release_key, click_keys
 from utils import get_frame, join_images, show_images, match_template
 from options import Anaconda as ship
 
 ##### options #####
-debug = True
+debug = False
 test = False
 
 ### button options ###
@@ -21,24 +20,41 @@ button_startstop = Key.f5
 button_debug = Key.f6
 button_jump = Key.f7
 button_end = Key.f8
+##### ------- #####
 
 
 # states
-class State(Enum):
+class StateType(Enum):
     INIT = 0
-    TURN_FORWARD = 1
-    TURN_AROUND = 2
-    CHECK_REFUEL = 3
-    REFUELING = 4
-    AVOID = 5
-    AUTO_REFUEL = 6
-    AUTO_REFUELING = 7
-    GO = 8
-    JUMP = 9
-    JUMPING = 10
-    JUMPED = 11
+    START = 1
+    TURN_FORWARD = 2
+    TURN_AROUND = 3
+    CHECK_REFUEL_AND_SCAN_STAR = 4
+    REFUELING = 5
+    AVOID = 6
+    AUTO_REFUEL = 7
+    AUTO_REFUELING = 8
+    GO_AHEAD = 9
+    JUMP = 10
+    JUMPING = 11
+    JUMPED = 12
     END = -1
     STOP = -2
+
+
+class State():
+    start = True
+    last_back_keys = None
+    count = 0
+    refueling_count = 0
+    refueled = False
+    avoid_speed = 0.5
+    star_type = None
+    jump_started = False
+    fail_jumps = 0
+    jump_timer = None
+    jump_start_time = None
+    type = StateType.INIT
 
 
 def center_ship(debug, opt, back=False):
@@ -84,6 +100,8 @@ def center_ship(debug, opt, back=False):
     cx = None
     cy = None
 
+    error = False
+
     # get position
     point_position = 0
     if center is not None and radius is not None:
@@ -102,10 +120,10 @@ def center_ship(debug, opt, back=False):
         mask = cv2.inRange(crop, lower_mask, upper_mask)
         if mask is not None:
             mask = cv2.resize(mask, (0, 0), fx=2, fy=2)
-            _, thresh = cv2.threshold(mask, 127, 255, 0)
+            thresh = cv2.threshold(mask, 127, 255, 0)[1]
             kernel = np.ones((5, 5), np.uint8)
             mask = cv2.erode(thresh.copy(), kernel, iterations=3)
-            _, contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[1]
             if len(contours) > 0:
                 cnt = max(contours, key=cv2.contourArea)
                 M = cv2.moments(cnt)
@@ -120,10 +138,10 @@ def center_ship(debug, opt, back=False):
                 mask = cv2.inRange(crop, lower_mask, upper_mask)
                 if mask is not None:
                     mask = cv2.resize(mask, (0, 0), fx=2, fy=2)
-                    _, thresh = cv2.threshold(mask, 0, 255, 0)
+                    thresh = cv2.threshold(mask, 0, 255, 0)[1]
                     mask = cv2.dilate(thresh, kernel, iterations=4)
 
-                    _, contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[1]
                     if len(contours) > 0:
                         cnt = max(contours, key=cv2.contourArea)
                         M = cv2.moments(cnt)
@@ -146,8 +164,10 @@ def center_ship(debug, opt, back=False):
                     debug_img = join_images(debug_img, crop)
         else:
             print 'ERROR: MASK IS NULL!'
+            error = True
     else:
-        print 'ERROR: CIRCLE NOT FOUND'        
+        print 'ERROR: CIRCLE NOT FOUND'
+        error = True
 
     # move
     keys = []
@@ -160,9 +180,9 @@ def center_ship(debug, opt, back=False):
             if not back:
                 if point_position == 1:
                     if deltaX < -opt.margin:
-                        keys.append(Buttons.NP_6)
+                        keys.append(Buttons.D)
                     elif deltaX > opt.margin:
-                        keys.append(Buttons.NP_4)
+                        keys.append(Buttons.A)
 
                     if deltaY < -opt.margin:
                         keys.append(Buttons.NP_2)
@@ -171,9 +191,9 @@ def center_ship(debug, opt, back=False):
 
                 elif point_position == 2:
                     if deltaX < -opt.margin:
-                        keys.append(Buttons.NP_6)
+                        keys.append(Buttons.D)
                     else:
-                        keys.append(Buttons.NP_4)
+                        keys.append(Buttons.A)
 
                     if deltaY < -opt.margin:
                         keys.append(Buttons.NP_2)
@@ -182,9 +202,9 @@ def center_ship(debug, opt, back=False):
             else:
                 if point_position == 1:
                     if deltaX < -opt.margin:
-                        keys.append(Buttons.NP_4)
+                        keys.append(Buttons.A)
                     else:
-                        keys.append(Buttons.NP_6)
+                        keys.append(Buttons.D)
 
                     if deltaY < -opt.margin:
                         keys.append(Buttons.NP_8)
@@ -193,9 +213,9 @@ def center_ship(debug, opt, back=False):
 
                 elif point_position == 2:
                     if deltaX < -opt.margin:
-                        keys.append(Buttons.NP_4)
+                        keys.append(Buttons.A)
                     elif deltaX > opt.margin:
-                        keys.append(Buttons.NP_6)
+                        keys.append(Buttons.D)
 
                     if deltaY < -opt.margin:
                         keys.append(Buttons.NP_8)
@@ -204,7 +224,7 @@ def center_ship(debug, opt, back=False):
 
             click_keys(keys, opt.move_time)
 
-    return len(keys) == 0, debug_img
+    return len(keys) > 0, error, debug_img
 
 
 def is_refueling(debug, opt):
@@ -215,7 +235,7 @@ def is_refueling(debug, opt):
     upper_mask = np.array([255, 255, 255])
     mask = cv2.inRange(crop, lower_mask, upper_mask)
 
-    _, contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[1]
 
     debug_image = None
     if debug:
@@ -235,14 +255,14 @@ def need_refuel(debug, opt):
     dilation = cv2.dilate(gray, kernel, iterations=1)
     erosion = cv2.erode(dilation, kernel, iterations=2)
 
-    _, contours, _ = cv2.findContours(erosion, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = cv2.findContours(erosion, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[1]
 
     w = 0
     contour = None
     if len(contours) > 0:
         contour = max(contours, key=cv2.contourArea)
         cv2.drawContours(crop, [contour], 0, (255, 255, 0), 1)
-        _, _, w, _ = cv2.boundingRect(contour)
+        w = cv2.boundingRect(contour)[2]
 
     debug_image = None
     if debug:
@@ -251,7 +271,7 @@ def need_refuel(debug, opt):
     return opt.min_refuel > w, debug_image
 
 
-def select_first_star(debug, opt):
+def select_first_star(debug, opt = None):
     result = False
 
     click_keys([Buttons.BUTTON_1], 0.1)
@@ -263,46 +283,32 @@ def select_first_star(debug, opt):
     click_keys([Buttons.W], 1)
 
     click_keys([Buttons.SPACE], 0.1)
-    time.sleep(1)
-
-    frame = get_frame()
-    crop = frame[opt.select_menu_y1:opt.select_menu_y2, opt.select_menu_x1:opt.select_menu_x2]
-
-    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-    gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
-
-    if match_template(gray, 'images/unlock.png', 0.8):
-        click_keys([Buttons.W], 0.1)
-        click_keys([Buttons.SPACE], 0.1)
-        result = True
-    elif match_template(gray, 'images/lock.png', 0.85):
-        click_keys([Buttons.SPACE], 0.1)
-        result = True
-
-    # pytesseract (todo: remove it later)
-    #text = None
-    #try:
-    #    text = pytesseract.image_to_string(gray, config='tessedit_char_whitelist=CKLNOU')
-    #    try:
-    #        print 'SELECTED STAR TEXT: ' + text
-    #    except:
-    #        print 'WARNING: PROBLEM WITH TEXT PRINT'
-    #except:
-    #    print 'CAN\' FIND TEXT ON STAR SELECT...'
-
-    #if text is not None:
-    #    text = text.upper()
-    #    if "UN" in text:
-    #        click_keys([Buttons.W], 0.1)
-    #        click_keys([Buttons.SPACE], 0.1)
-    #        result = True
-    #    elif "LOCK" in text:
-    #        click_keys([Buttons.SPACE], 0.1)
-    #        result = True
 
     debug_image = None
-    if debug:
-        debug_image = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+
+    if opt is not None:
+        time.sleep(1)
+
+        frame = get_frame()
+        crop = frame[opt.select_menu_y1:opt.select_menu_y2, opt.select_menu_x1:opt.select_menu_x2]
+
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+        gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+
+        if match_template(gray, 'images/unlock.png', 0.8)[0]:
+            click_keys([Buttons.W], 0.1)
+            click_keys([Buttons.SPACE], 0.1)
+            result = True
+        elif match_template(gray, 'images/lock.png', 0.85)[0]:
+            click_keys([Buttons.SPACE], 0.1)
+            result = True
+
+        if debug:
+            debug_image = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+    else:
+        time.sleep(0.1)
+        click_keys([Buttons.SPACE], 0.1)
+        result = True
 
     click_keys([Buttons.BUTTON_1], 0.1)
     return result, debug_image
@@ -326,7 +332,7 @@ def avoid(debug, opt, last_keys=None, speed=1):
 
     mask = dilation
 
-    _, contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[1]
 
     M = None
     deltaX = 0
@@ -354,10 +360,10 @@ def avoid(debug, opt, last_keys=None, speed=1):
         keys = last_keys
     elif M is not None:
         if deltaX <= 0:
-            keys.append(Buttons.NP_4)
+            keys.append(Buttons.A)
 
         elif deltaX > 0:
-            keys.append(Buttons.NP_6)
+            keys.append(Buttons.D)
 
         if deltaY >= 0:
             keys.append(Buttons.NP_2)
@@ -407,7 +413,7 @@ def is_jumping(debug, opt):
     return circles is not None and len(circles) > 0, debug_image
 
 
-def can_refuel(debug, opt, scan_surface_time):
+def can_refuel(debug, opt):
     result = False
 
     frame = get_frame()
@@ -420,33 +426,33 @@ def can_refuel(debug, opt, scan_surface_time):
 
     star_type = None
     ignore_print = False
-    if match_template(gray, 'images/sc.png', 0.85):
+    if match_template(gray, 'images/sc.png', 0.9)[0]:
         print 'STAR IS SCANNED'
         star_type = 'S'
-        time.sleep(scan_surface_time)
         ignore_print = True
-    elif match_template(gray, 'images/m.png', 0.85):
+    elif match_template(gray, 'images/m.png', 0.9)[0]:
         star_type = 'M'
         result = True
-    elif match_template(gray, 'images/k.png', 0.85):
+    elif match_template(gray, 'images/k.png', 0.9)[0]:
         star_type = 'K'
         result = True
-    elif match_template(gray, 'images/g.png', 0.85):
+    elif match_template(gray, 'images/g.png', 0.9)[0]:
         star_type = 'G'
         result = True
-    elif match_template(gray, 'images/f.png', 0.85):
+    elif match_template(gray, 'images/f.png', 0.9)[0]:
         star_type = 'F'
         result = True
-    elif match_template(gray, 'images/a.png', 0.85):
+    elif match_template(gray, 'images/a.png', 0.9)[0]:
         star_type = 'A'
         result = True
-    elif match_template(gray, 'images/b.png', 0.85):
-        star_type = 'B'
-        result = True
-    elif match_template(gray, 'images/0.png', 0.85):
+    elif match_template(gray, 'images/b.png', 0.9)[0]:
+        if not match_template(gray, 'images/black.png', 0.9)[0]:
+            star_type = 'B'
+            result = True
+    elif match_template(gray, 'images/0.png', 0.95)[0]:
         star_type = '0'
         result = True
-    elif match_template(gray, 'images/un.png', 0.85):
+    elif match_template(gray, 'images/un.png', 0.9)[0]:
         print 'STAR IS UNEXPLORED, WHY?'
         ignore_print = True
 
@@ -455,35 +461,6 @@ def can_refuel(debug, opt, scan_surface_time):
             print 'STAR TYPE IS ' + star_type
         else:
             print 'STAR TYPE IS UNKNOWN'
-
-
-    ## pytesseract (todo: remove it later)
-    #text = None
-    #try:
-    #    text = pytesseract.image_to_string(gray, config='tessedit_char_whitelist=ABFGKNOSU')
-    #except:
-    #    print 'CAN\'T FIND STAR TEXT...'
-
-    #star_type = None
-    #if text is not None:
-    #    text = text[:1].upper()
-    #    try:
-    #        if "O" in text or "B" in text or "A" in text or "F" in text or "G" in text or "K" in text or "M" in text:
-    #            star_type = text
-    #            print 'STAR TYPE IS: ' + text
-    #            result = True
-    #        elif "S" in text:
-    #            print 'STAR SCAN, FOUNDED: ' + text
-    #            time.sleep(scan_surface_time)
-    #        elif "U" in text:
-    #            print 'STAR IS UNKNOWN, WHY?'
-    #        else:
-    #            if not text:
-    #                print 'WARNING, STAR TYPE NOT FOUNDED: ' + text
-    #            else:
-    #                print 'STAR TYPE NOT FOUNDED: ' + text
-    #    except:
-    #        print 'WARNING: PROBLEM WITH TEXT IN STAR FINDING'
 
     debug_image = None
     if debug:
@@ -503,13 +480,35 @@ def is_in_jump(debug, opt):
     kernel = np.ones((4, 4), np.uint8)
     dilation = cv2.dilate(mask, kernel, iterations=1)
 
-    _, contours, _ = cv2.findContours(dilation, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = cv2.findContours(dilation, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[1]
 
     debug_image = None
     if debug:
         debug_image = cv2.cvtColor(dilation, cv2.COLOR_GRAY2RGB)
 
     return len(contours) > 0, debug_image
+
+
+def is_in_route(debug):
+    click_keys([Buttons.BUTTON_1], 0.1)
+    time.sleep(2)
+
+    frame = get_frame()
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    result, loc = match_template(gray, 'images/route.png', 0.8)
+
+    click_keys([Buttons.BUTTON_1], 0.1)
+
+    debug_image = None
+    if debug:
+        debug_image = frame
+        for pt in zip(*loc[::-1]):
+            cv2.rectangle(frame, (pt[0] - 1, pt[1] - 1), (pt[0] + 30, pt[1] + 28), (0, 0, 255), 1)
+        debug_image = cv2.resize(debug_image, (0, 0), fx=0.5, fy=0.5)
+
+    return result, debug_image
 
 
 def end_scan():
@@ -524,363 +523,385 @@ def start_scan(scan_system_time):
     r.start()
 
 
+state = State()
+
+
 def jump_fail():
     global state
-    global count
-    global jump_started
 
     print 'ERROR: JUMP FAILURE!!!'
 
     click_keys([Buttons.M], 0.1)
     click_keys([Buttons.V], 0.1)
 
-    jump_started = False
-    count = 0
-    state = State.JUMP
-
-
-start = True
-is_star_centered = False
-last_back_keys = None
-count = 0
-refueling_count = 0
-avoid_speed = 0.5
-star_type = None
-jump_started = False
-fail_jumps = 0
-jump_timer = None
-state = State.INIT
-
-
-def reset():
-    global start
-    global is_star_centered
-    global last_back_keys
-    global count
-    global refueling_count
-    global avoid_speed
-    global star_type
-    global jump_started
-    global fail_jumps
-    global jump_timer
-    global state
-
-    start = True
-    is_star_centered = False
-    last_back_keys = None
-    count = 0
-    refueling_count = 0
-    avoid_speed = 0.5
-    star_type = None
-    jump_started = False
-    fail_jumps = 0
-    jump_timer = None
-    state = State.INIT
+    state.jump_started = False
+    state.jump_timer = None
+    state.count = 0
+    state.type = StateType.JUMP
 
 
 def on_press(key):
     # listener keyboards
-    global state
     global debug
-    global button_startstop
-    global button_debug
-    global button_jump
-    global button_end
+    global state
 
-    if key == button_startstop and state == State.INIT:
-        state = State.TURN_FORWARD
+    if key == button_startstop and state.type == StateType.INIT:
+        state = State()
+        state.type = StateType.START
     elif key == button_startstop:
-        reset()
-        print 'Pause'
+        print 'PAUSED'
+        state.type = StateType.INIT
     elif key == button_debug:
         debug = not debug
-        print "Debug is: ", debug
+        cv2.destroyWindow('Debug')
+        print "DEBUG IS: ", debug
     elif key == button_jump:
-        reset()
-        state = State.GO
+        state = State()
+        state.start = False
+        state.type = StateType.GO_AHEAD
     elif key == button_end:
-        state = State.END
+        state.type = StateType.END
+        print 'STOPPED. BYE COMMANDER!'
         SystemExit("Stopped")
 
 
 listener = Listener(on_press=on_press)
 listener.start()
 
+print 'WELCOME COMMANDER!'
 
 while(True):
-    if test and state.value > 0:
-    # for tests:
+    if test and state.type.value > 0:
+        # for tests:
         # select_first_star
-        if False:
-            selected, debug_image = select_first_star(True, ship.Menu)
-            cv2.imshow('Debug', debug_image)
+        if True:
+            selected, debug_image = select_first_star(True)
+            if debug_image is not None:
+                cv2.imshow('Debug', debug_image)
             if selected:
                 print "select_first_star works"
             else:
                 print "problem with select_first_star"
-            cv2.waitKey(1000)
+            time.sleep(1)
 
-        if False:
-            can, s_type, debug_image = can_refuel(debug, ship.Refuel, ship.Scanner.scan_surface_time)
+        # can_refuel
+        if True:
+            can, s_type, debug_image = can_refuel(True, ship.Refuel)
             cv2.imshow('Debug', debug_image)
             if s_type is not None:
                 print "can_refuel works"
             else:
                 print "problem with can_refuel or you can't refuel from this star"
-            cv2.waitKey(1000)
-            
+            time.sleep(1)
+
+        # is_in_route
+        if True:
+            in_route, debug_image = is_in_route(True)
+            cv2.imshow('Debug', debug_image)
+            if in_route:
+                print "Route is active"
+            else:
+                print "Route is not active"
+            time.sleep(1)
+
         #cv2.imwrite('0.png', debug_image)
 
-    if not test and state.value > 0:
-    # ---------------------------
+    if not test and state.type.value > 0:
+        # ---------------------------
         debug_images = []
-        if start:
-            print 'STARTED: version 0.0.3'
-            start = False
+        if state.start:
+            print 'STARTED VERSION: 0.0.3'
+            state.start = False
             start_scan(ship.Scanner.scan_system_time)
-            _, debug_image = select_first_star(debug, ship.Menu)
+            debug_image = select_first_star(debug, ship.Menu)[1]
             debug_images.append(debug_image)
             time.sleep(1)
 
+        # start
+        if state.type == StateType.START:
+            state.jump_start_time = time.time()
+            state.type = StateType.TURN_FORWARD
+
         # turn forward
-        if state == State.TURN_FORWARD:
-            print 'TURN FORWARD: ' + str(count)
-            centered, debug_image = center_ship(debug, ship.Radar)
+        elif state.type == StateType.TURN_FORWARD:
+            print 'TURN FORWARD: ' + str(state.count)
+            centered, error, debug_image = center_ship(debug, ship.Radar)
             debug_images.append(debug_image)
             if centered:
-                count += 1
+                state.count = 0
+            elif error:
+                click_keys([Buttons.NP_6], 1)
+                state.count = 0
             else:
-                count = 0
+                state.count += 1
 
-            if count > 10:
+            if state.count > 10:
                 print 'TURNING FINISHED'
-                count = 0
-                is_star_centered = True
-                state = State.CHECK_REFUEL
+                state.count = 0
+                state.star_type = None
+                state.refueled = False
+                state.type = StateType.CHECK_REFUEL_AND_SCAN_STAR
 
-        # check refuel
-        elif state == State.CHECK_REFUEL:
-            print 'CHECK REFUEL: ' + str(count)
+        # check refuel and scan star
+        elif state.type == StateType.CHECK_REFUEL_AND_SCAN_STAR:
+            print 'CHECK REFUEL: ' + str(state.count)
 
-            if star_type is None:
-                can, s_type, debug_image = can_refuel(debug, ship.Refuel, ship.Scanner.scan_surface_time)
+            if state.star_type is None:
+                can, star_type, debug_image = can_refuel(debug, ship.Refuel)
                 debug_images.append(debug_image)
-                if s_type is not None:
-                    star_type = s_type
+                if star_type is not None:
+                    state.star_type = star_type
+            else:
+                can = True
 
             need, debug_image = need_refuel(debug, ship.Refuel)
             debug_images.append(debug_image)
             if can and need:
-                count += 1
+                state.count += 1
+            elif state.star_type is not None and state.star_type is "S":
+                state.count = 0
+                state.star_type = None
+                time.sleep(ship.Scanner.scan_surface_time)
             else:
-                count -= 1
+                state.count -= 1
+                if state.star_type is None:
+                    time.sleep(1)
 
-            if star_type is not None and "S" in star_type:
-                count = 0
-
-            if count > 5:
+            if state.count > 5:
                 print 'START REFUEL'
-                count = 0
-                state = State.REFUELING
-                avoid_speed = ship.Avoid.avoid_speed_fast
-            elif count < -5:
+                state.count = 0
+                state.type = StateType.REFUELING
+                state.avoid_speed = ship.Avoid.avoid_speed_fast
+            # 2 attempts for determining the width of the fuel bar
+            elif state.count < -2 and can:
                 print 'NO NEED REFUEL'
-                count = 0
-                state = State.AVOID
-                avoid_speed = ship.Avoid.avoid_speed_slow
+                state.count = 0
+                state.type = StateType.AVOID
+                state.avoid_speed = ship.Avoid.avoid_speed_slow
+            # can be problem with detect star type that's why 10 attempts
+            elif state.count < -10 and not can:
+                print 'WARNING: TRYING TURN AROUND...'
+                state.count = 0
+                state.type = StateType.TURN_AROUND
 
         # refueling
-        elif state == State.REFUELING:
+        elif state.type == StateType.REFUELING:
+            print 'REFUELING: ' + str(state.refueling_count)
+
             refueling, debug_image = is_refueling(debug, ship.Refuel)
             debug_images.append(debug_image)
             if refueling:
-                print 'REFUELING: ' + str(refueling_count)
-                refueling_count = 0
-                check_refuel_count = 0
+                state.refueling_count = 0
                 click_keys([Buttons.V], 0.1)
             else:
-                refueling_count += 1
+                state.refueling_count += 1
 
-            if refueling_count > 50:
-                refueling_count = 50
-                print 'CAN I GO TO STAR? ' + str(count)
+            if state.refueling_count > 10:
+                state.refueling_count = 10
+                print 'CAN I GET CLOSER TO STAR? ' + str(state.count)
 
                 need, debug_image = need_refuel(debug, ship.Refuel)
                 debug_images.append(debug_image)
 
                 if need:
-                    count += 1
+                    state.count += 1
                 else:
-                    count -= 1
+                    state.count -= 1
 
-                if count > 10:
-                    print 'YES, GO TO STAR'
-                    count = 0
+                if state.count > 10:
+                    print 'YES, GO TO STAR CLOSER'
+                    state.count = 0
                     click_keys([Buttons.C], 0.1)
-                    _, debug_image = center_ship(debug, ship.Radar)
+                    debug_image = center_ship(debug, ship.Radar)[2]
                     debug_images.append(debug_image)
 
-                elif count < -10:
+                elif state.count < -10:
                     print 'NO, NO NEED REFUEL'
-                    count = 0
-                    refueling_count = 0
-                    state = State.AVOID
+                    state.count = 0
+                    state.refueled = True
+                    state.refueling_count = 0
+                    state.type = StateType.AVOID
 
         # avoid
-        elif state == State.AVOID:
-            print 'AVOID: ' + str(count)
-            runned, last_back_keys, debug_image = avoid(debug, ship.Avoid, last_back_keys, avoid_speed)
+        elif state.type == StateType.AVOID:
+            print 'AVOID: ' + str(state.count)
+            avoided, last_back_keys, debug_image = avoid(debug, ship.Avoid, state.last_back_keys, state.avoid_speed)
+            state.last_back_keys = last_back_keys
             debug_images.append(debug_image)
 
-            if runned:
-                is_star_centered = False
-                count = 0
+            if avoided:
+                state.count = 0
             else:
-                count += 1
-                last_back_keys = None
+                state.count += 1
+                state.last_back_keys = None
 
-            if count > 10:
+            if state.count > 10:
                 print 'AVOIDED'
-                count = 0
-
-                if is_star_centered or star_type is None:
-                    print 'WARNING: TRY GO AWAY...'
-                    state = state.TURN_AROUND
+                state.count = 0
+                if state.refueled:
+                    click_keys([Buttons.W], ship.go_ahead_time / 2)
+                    state.type = StateType.GO_AHEAD
                 else:
-                    state = State.AUTO_REFUEL
-
-                star_type = None
+                    state.type = StateType.AUTO_REFUEL
 
         # turn around
-        elif state == state.TURN_AROUND:
-            print 'TURN AROUND: ' + str(count)
-            centered, debug_image = center_ship(debug, ship.Radar, True)
+        elif state.type == StateType.TURN_AROUND:
+            print 'TURN AROUND: ' + str(state.count)
+            centered, error, debug_image = center_ship(debug, ship.Radar, True)
             debug_images.append(debug_image)
             if centered:
-                count += 1
+                state.count = 0
+            elif error:
+                click_keys([Buttons.NP_4], 1)
+                state.count = 0
             else:
-                count = 0
+                state.count += 1
 
-            if count > 5:
-                print 'TURNING BACK FINISHED'
-                count = 0
-                is_star_centered = True
-                state = State.AUTO_REFUEL
-        
+            if state.count > 5:
+                print 'TURNING AROUND FINISHED'
+                state.count = 0
+                state.type = StateType.GO_AHEAD
+
         # auto refuel
-        elif state == State.AUTO_REFUEL:
+        elif state.type == StateType.AUTO_REFUEL:
             print 'AUTO REFUEL?'
             click_keys([Buttons.C], 0.1)
-            state = State.AUTO_REFUELING
+            state.type = StateType.AUTO_REFUELING
 
         # auto refueling
-        elif state == State.AUTO_REFUELING:
-            print 'AUTO REFUELING: ' + str(count)
+        elif state.type == StateType.AUTO_REFUELING:
+            print 'AUTO REFUELING: ' + str(state.count)
             refueling, debug_image = is_refueling(debug, ship.Refuel)
             debug_images.append(debug_image)
             if refueling:
                 print 'AUTO REFUELING DETECTED'
-                count = 5
+                state.count = 50
             else:
-                count += 1
-                time.sleep(1)
+                state.count += 1
 
-            if count > 10:
+            if state.count > 100:
                 print 'AUTO REFUELING FINISHED'
-                count = 0
-                click_keys([Buttons.W], 10)
-                click_keys([Buttons.V], 0.1)
-                state = State.GO
+                state.count = 0
+                state.type = StateType.GO_AHEAD
 
         # go to jump
-        elif state == State.GO:
+        elif state.type == StateType.GO_AHEAD:
             print 'GO GO GO!'
+            click_keys([Buttons.W], ship.go_ahead_time)
+            click_keys([Buttons.V], 0.1)
             click_keys([Buttons.T], 0.1)
-            state = State.JUMP
+            state.type = StateType.JUMP
 
         # jump
-        elif state == State.JUMP:
-            print 'JUMP: ' + str(count)
+        elif state.type == StateType.JUMP:
+            print 'JUMP: ' + str(state.count)
 
-            centered, debug_image = center_ship(debug, ship.Radar)
+            centered, error, debug_image = center_ship(debug, ship.Radar)
             debug_images.append(debug_image)
 
-            if not centered:
-                count = 0
+            if centered:
+                state.count = 0
+            elif error:
+                click_keys([Buttons.NP_6], 1)
+                state.count = 0
             else:
-                count += 1
+                state.count += 1
 
-            if count > 5:
+            if state.count > 5:
                 print 'JUMPING!'
-                count = 0
-                jump_started = False
                 click_keys([Buttons.M], 0.1)
-                state = State.JUMPING
+                state.count = 0
+                state.jump_started = False
+                state.type = StateType.JUMPING
 
         # jumping
-        elif state == State.JUMPING:
-            print 'JUMPING: ' + str(count)
+        elif state.type == StateType.JUMPING:
+            print 'JUMPING: ' + str(state.count)
             jumping, debug_image = is_jumping(debug, ship.Radar)
             debug_images.append(debug_image)
             if jumping:
-                if not jump_started:
-                    jump_started = True
+                if not state.jump_started:
+                    print 'JUMP DETECTED, GET READY!'
                     time.sleep(ship.Jump.jump_load_time)
                     click_keys([Buttons.W], 2)
-                    jump_timer = Timer(60, jump_fail)
-                    jump_timer.start()
+                    state.jump_started = True
+                    state.jump_timer = Timer(60, jump_fail)
+                    state.jump_timer.start()
 
-                count = 0
+                state.count = 0
             else:
-                count += 1
+                if not state.jump_started:
+                    click_keys([Buttons.NP_6], 0.2)
+                state.count += 1
 
-            if count > 100:
-                count = 0
-                if not jump_started:
+            if state.count > 100:
+                state.count = 0
+                if not state.jump_started:
                     print 'JUMP STOPPED!'
-                    fail_jumps += 1
                     click_keys([Buttons.M], 0.1)
-                    if fail_jumps > 5:
-                        print 'PROBLEM WITH JUMP!'
-                        state = State.STOP
+
+                    in_route, debug_image = is_in_route(debug)
+                    debug_images.append(debug_image)
+
+                    if not in_route:
+                        print 'NOT IN ROUTE, STOP!'
+                        state.type = StateType.STOP
                     else:
-                        state = State.AVOID
+                        state.fail_jumps += 1
+                        if state.fail_jumps > 5:
+                            print 'PROBLEM WITH JUMP!'
+                            state.type = StateType.STOP
+                        elif state.star_type is None:
+                            state.type = StateType.TURN_AROUND
+                        else:
+                            state.type = StateType.AVOID
                 else:
                     print 'IN JUMP!'
-                    jump_timer.cancel()
-                    fail_jumps = 0
-                    state = State.JUMPED
+                    state.fail_jumps = 0
+                    state.type = StateType.JUMPED
+
+                if state.jump_timer is not None:
+                    state.jump_timer.cancel()
+                    state.jump_timer = None
 
         # jumped
-        elif state == State.JUMPED:
-            print 'JUMPED: ' + str(count)
+        elif state.type == StateType.JUMPED:
+            print 'JUMPED: ' + str(state.count)
             click_keys([Buttons.V], 0.1)
             in_jump, debug_image = is_in_jump(debug, ship.Jump)
             debug_images.append(debug_image)
             if in_jump:
-                count = 0
+                state.count = 0
             else:
-                count += 1
+                state.count += 1
 
-            if count > 10:
-                print 'JUMP FINISHED!'
-                count = 0
+            if state.count > 10:
+                if state.jump_start_time is not None:
+                    jump_end_time = time.time()
+                    print('JUMP FINISHED IN %.2f!' % ((jump_end_time - state.jump_start_time) / 60))
+                else:
+                    print('JUMP FINISHED!')
                 start_scan(ship.Scanner.scan_system_time)
-                _, debug_image = select_first_star(debug, ship.Menu)
+                debug_image = select_first_star(debug)[1]
                 debug_images.append(debug_image)
                 time.sleep(1)
-                state = State.TURN_FORWARD
+                state.count = 0
+                state.type = StateType.START
 
         # draw debug images
         if debug:
-            show_images(debug_images)
+            show_images([image for image in debug_images if image is not None])
     else:
         cv2.destroyWindow('Debug')
 
-    if state == State.END:
+    if state.type == StateType.END:
         cv2.destroyAllWindows()
-        if jump_timer is not None:
-            jump_timer.cancel()
+        if state.jump_timer is not None:
+            state.jump_timer.cancel()
+            state.jump_timer = None
         break
 
-    cv2.waitKey(25)
+    if debug:
+        cv2.waitKey(25)
+    else:
+        time.sleep(0.025)

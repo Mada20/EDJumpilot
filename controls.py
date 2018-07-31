@@ -5,7 +5,8 @@ import time
 class Buttons:  # http://www.gamespp.com/directx/directInputKeyboardScanCodes.html
     W = 0x11  # increase throttle / ui panel up
     S = 0x1F  # ui panel down
-    D = 0x20  # ui panel right
+    A = 0x1E  # yaw left
+    D = 0x20  # ui panel right / yaw right
     B = 0x30  # throttle 75%
     C = 0x2E  # throttle 25%
     V = 0x2F  # throttle 0%
@@ -16,8 +17,8 @@ class Buttons:  # http://www.gamespp.com/directx/directInputKeyboardScanCodes.ht
     # NP - number pad
     NP_2 = 0x50  # pitch down
     NP_8 = 0x48  # pitch up
-    NP_4 = 0x4B  # yaw left
-    NP_6 = 0x4D  # yaw right
+    NP_4 = 0x4B  # roll left
+    NP_6 = 0x4D  # roll right
     NP_P = 0x4E  # primary fire (discovery scanner)
 
 

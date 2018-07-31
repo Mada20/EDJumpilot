@@ -11,7 +11,7 @@ Features
 
 Example
 ----
-<https://youtu.be/wWtGXanKhYw>
+<https://youtu.be/W5pkljXhoew>
 
 Requirements
 ----
@@ -19,24 +19,22 @@ Requirements
  - OpenCV 3.4.1 <https://opencv.org/>
    You must have the cv2.pyd library in the folder in which the script is located or in ../Python27/lib/site-packages.
    Instructions for Windows: <https://docs.opencv.org/3.0-beta/doc/py_tutorials/py_setup/py_setup_in_windows/py_setup_in_windows.html>
- - Google Tesseract OCR 3.05.01 <https://github.com/tesseract-ocr/tesseract> (for pytesseract - text recognized)
-   You must be able to invoke the tesseract command as *tesseract*.
 
 Installation / configuration
 ----
- 1. Download jumpilot.py.
- 2. Install the required libraries used by script if you do not have them (ctypes, pynput, pytesseract, numpy, PIL)
- 3. Edit jumpilot.py and configure options in your own way (lines: 14 - 71). 
+ 1. Download main.py, controls.py, options.py and utils.py.
+ 2. Install the required libraries by pip used by script if you do not have them (ctypes, pynput, numpy, PIL)
+ 3. Edit options.py and configure options in your own way. 
     (For now all settings are for Anaconda and screen resolution FullHD)
  4. Use default HUD colour and set interface brightness to full. (System panels (default:4) -> Functions -> INTERFACE BRIGHTNESS)
- 5. TODO: Ustaw scanner na atak
- 6. If you want, edit jumpilot.py and change options for buttons in lines: 154 -170 or change buttons settings in the game:
+ 5. If you want, edit controls.py and change options for buttons in lines: 6 - 22 or change buttons settings in the game:
 
 | Button | Description |
 | ------ | ------ |
 | W | increase throttle / ui panel up |
 | S | ui panel down |
-| D | ui panel right |
+| A | yaw left |
+| D | ui panel right / yaw right |
 | B | throttle 75% |
 | C | throttle 25% |
 | V | throttle 0% |
@@ -46,18 +44,19 @@ Installation / configuration
 | SPACE | ui panel select |
 | NumberPad 2 | pitch down |
 | NumberPad 8 | pitch up |
-| NumberPad 4 | yaw left |
-| NumberPad 6 | yaw right |
+| NumberPad 4 | roll left |
+| NumberPad 6 | roll right |
 | NumberPad plus | primary fire (discovery scanner) |
 
 Instructions
 ----
- 1. Run the jumpilot.py script. <https://www.pythoncentral.io/execute-python-script-file-shell/>
+ 1. Run the main.py script. <https://www.pythoncentral.io/execute-python-script-file-shell/>
  2. Run the game and calculate the route (plot route). 
  3. Check if the navigation tab is selected in target panel.
- 4. Engage Supercruise.
- 5. Click F5 to run the script. (F5, if you have not changed it)
- 6. Click F8 to finish the script. (F8, if you have not changed it)
+ 4. Check if DISCOVERY SCANNER is set as primary weapon and chosen.
+ 5. Engage Supercruise.
+ 6. Click F5 to run the script, click F5 again to pause script. (F5, if you have not changed it)
+ 7. Click F8 to finish the script. (F8, if you have not changed it)
 
 Warnings
 ----
@@ -68,7 +67,6 @@ Todos
 ----
  - configure more ships
  - code improvements
- - delete the pytesseract library (I want use only OpenCV)
  - add a screen resolution configuration
  - add option for HUD colour
 

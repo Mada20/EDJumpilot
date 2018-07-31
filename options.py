@@ -1,4 +1,5 @@
 class Anaconda:
+    go_ahead_time = 10
 
     ### avoid options ###
     class Avoid:
@@ -39,7 +40,7 @@ class Anaconda:
 
     ### scanning options ###
     class Scanner:
-        scan_surface_time = 6
+        scan_surface_time = 10
         scan_system_time = 8
 
     ### jump options ###

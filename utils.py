@@ -21,7 +21,7 @@ def match_template(image, template_name, threshold):
     template = cv2.imread(template_name,0)
     res = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
     loc = np.where( res >= threshold)
-    return len(zip(*loc[::-1])) > 0
+    return len(zip(*loc[::-1])) > 0, loc
 
 
 def get_frame():
