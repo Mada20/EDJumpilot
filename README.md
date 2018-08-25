@@ -1,4 +1,4 @@
-# EDjumpilot v.0.0.3
+# EDjumpilot v.0.0.4
 
 EDjumpilot is a python script to jump on a plotted route in the game Elite Dangerous. I wrote this script to facilitate the most stupid activity in the game what is jumps. Jumping is the most boring activity in the game, so I didn't want to spoil the game and never back. Suggestions welcome.
 
@@ -11,7 +11,7 @@ Features
 
 Example
 ----
-<https://youtu.be/W5pkljXhoew>
+<https://youtu.be/OfYKQbecI6k>
 
 Requirements
 ----
@@ -22,12 +22,12 @@ Requirements
 
 Installation / configuration
 ----
- 1. Download main.py, controls.py, options.py and utils.py.
- 2. Install the required libraries by pip used by script if you do not have them (ctypes, pynput, numpy, PIL)
- 3. Edit options.py and configure options in your own way. 
+ 1. Download the repository.
+ 2. Install the required libraries by pip used by script if you do not have them. (ctypes, pynput, numpy, PIL)
+ 3. Edit options.py and configure options in your own way. Or add yours options and change import in main.py in 4 line.
     (For now all settings are for Anaconda and screen resolution FullHD)
  4. Use default HUD colour and set interface brightness to full. (System panels (default:4) -> Functions -> INTERFACE BRIGHTNESS)
- 5. If you want, edit controls.py and change options for buttons in lines: 6 - 22 or change buttons settings in the game:
+ 5. If you want, edit controls.py and change settings for buttons in lines: 6 - 22 or change buttons settings in the game:
 
 | Button | Description |
 | ------ | ------ |
@@ -57,6 +57,9 @@ Instructions
  5. Engage Supercruise.
  6. Click F5 to run the script, click F5 again to pause script. (F5, if you have not changed it)
  7. Click F8 to finish the script. (F8, if you have not changed it)
+
+Tip 1. Click F6 for toggle debug.
+Tip 2. Click F7 if ship is ready to jump :)
 
 Warnings
 ----

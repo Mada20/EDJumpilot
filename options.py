@@ -17,6 +17,7 @@ class Anaconda:
     ### refuel options ###
     class Refuel:
         min_refuel = 90  # min width of fuel when can be refuel
+        threshold = 0.85
         # crop options where is star name #O
         can_refuel_crop_x1 = 85
         can_refuel_crop_x2 = 120
