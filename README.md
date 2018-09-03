@@ -91,9 +91,8 @@ Instructions
  5. Engage Supercruise.
  6. Click F5 to run the script, click F5 again to pause script. (F5, if you have not changed it)
  7. Click F8 to finish the script. (F8, if you have not changed it)
-
-Tip 1. Click F6 for toggle debug.
-Tip 2. Click F7 if ship is ready to jump :)
+- Tip 1. Click F6 for toggle debug.
+- Tip 2. Click F7 if ship is ready to jump :)
 
 Warnings
 ----
