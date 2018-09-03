@@ -1,0 +1,50 @@
+{
+    "go_ahead_time": 10,
+    "avoid": {
+        "danger_zone_crop_x1": 720,
+        "danger_zone_crop_x2": 1200,
+        "danger_zone_crop_y1": 300,
+        "danger_zone_crop_y2": 700,
+        "avoid_center_x": 240,
+        "avoid_center_y": 200,
+        "avoid_speed_slow": 0.5,
+        "avoid_speed_fast": 2
+    },
+    "refuel": {
+        "min_refuel": 100,
+        "threshold": 0.85,
+        "can_refuel_crop_x1": 120,
+        "can_refuel_crop_x2": 160,
+        "can_refuel_crop_y1": 925,
+        "can_refuel_crop_y2": 950,
+        "need_refuel_crop_x1": 1640,
+        "need_refuel_crop_x2": 1820,
+        "need_refuel_crop_y1": 925,
+        "need_refuel_crop_y2": 965
+    },
+    "radar": {
+        "margin": 10,
+        "move_time": 0.2,
+        "radar_crop_x1": 660,
+        "radar_crop_x2": 810,
+        "radar_crop_y1": 760,
+        "radar_crop_y2": 960
+    },
+    "scanner": {
+        "scan_surface_time": 10,
+        "scan_system_time": 8
+    },
+    "jump": {
+        "jump_load_time": 15,
+        "in_jump_crop_x1": 1120,
+        "in_jump_crop_x2": 1160,
+        "in_jump_crop_y1": 870,
+        "in_jump_crop_y2": 910
+    },
+    "menu": {
+        "select_menu_x1": 410,
+        "select_menu_x2": 520,
+        "select_menu_y1": 535,
+        "select_menu_y2": 565
+    }
+}

@@ -1,23 +1,22 @@
 import time
+import json
 from pynput.keyboard import Key, Listener
-
-from options import Anaconda as ship
 from runner import Runner, StateType
 
-##### options #####
-debug = False
-test = False
-shutdown = False  # close the computer after completing the route
 
 ### button options ###
 button_startstop = Key.f5
 button_debug = Key.f6
 button_jump = Key.f7
 button_end = Key.f8
-##### ------- #####
+### ------- ###
+
+config = None
+with open('config.json', 'r') as f:
+    config = json.load(f)
 
 
-runner = Runner(ship, debug, test, shutdown)
+runner = Runner(config)
 
 
 def on_press(key):
@@ -46,7 +45,7 @@ def on_press(key):
 listener = Listener(on_press=on_press)
 listener.start()
 
-print 'WELCOME COMMANDER IN EDJUMPILOT v.0.0.4'
+print 'WELCOME COMMANDER IN EDJUMPILOT v.0.0.5'
 
 run = True
 while(run):

@@ -41,3 +41,11 @@ def show_images(images):
                 imshow = join_images(imshow, image)
 
         cv2.imshow('Debug', imshow)
+
+def get_contour_by_size(contours, width, height, margin):
+    if len(contours) > 1:
+        for _, cnt in enumerate(contours):
+            (_, _, w, h) = cv2.boundingRect(cnt)
+            if w < width + margin and w > width - margin and h < height + margin and h > height - margin:
+                return cnt
+    return max(contours, key=cv2.contourArea)

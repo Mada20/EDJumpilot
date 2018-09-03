@@ -1,0 +1,17 @@
+{
+    "debug": false,
+    "disable_star_scan": false,
+    "shutdown": false,
+    "jumps_number": -1,
+    "ship_config_dir": "ships/anaconda",
+    "test": false,
+    "tests": {
+        "center_ship": false,
+        "select_first_star": false,
+        "can_refuel": false,
+        "need_refuel": false,
+        "is_fuel_scoop_active": false,
+        "is_in_route": false,
+        "avoid": false
+    }
+}

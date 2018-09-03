@@ -1,11 +1,12 @@
 import os
 from enum import Enum
 import time
+import json
 from threading import Timer
 import cv2
 import numpy as np
 
-from utils import get_frame, join_images, show_images, match_template
+from utils import get_frame, join_images, show_images, match_template, get_contour_by_size
 from controls import Buttons, press_key, release_key, click_keys
 
 
@@ -19,10 +20,12 @@ class StateType(Enum):
     AVOID = 6
     AUTO_REFUEL = 7
     AUTO_REFUELING = 8
-    GO_AHEAD = 9
-    JUMP = 10
-    JUMPING = 11
-    JUMPED = 12
+    FUEL_SCOOP_ACTIVE = 9
+    GO_AHEAD = 10
+    JUMP = 11
+    JUMPING = 12
+    JUMPED = 13
+    CHECK_REFUEL = 14
     END = -1
     STOP = -2
 
@@ -39,37 +42,35 @@ class State():
     fail_jumps = 0
     jump_timer = None
     jump_start_time = None
+    jumping_start_time = None
     type = StateType.INIT
 
 
-class Tests:
-    center_ship = False
-    select_first_star = False
-    can_refuel = False
-    need_refuel = False
-    is_in_route = False
-    avoid = False
-
-
 class Runner:
-    def __init__(self, ship, debug, test, shutdown):
-        self.ship = ship
-        self.debug = debug
-        self.test = None
-        self.shutdown = shutdown
+    def __init__(self, config):
+        self.ship_dir = config['ship_config_dir']
+        self.number_jumps = config['jumps_number']
+        self.debug = config['debug']
+        self.tests = None
+        self.shutdown = config['shutdown']
+        self.disable_star_scan = config['disable_star_scan']
+
+        self.ship_config = None
+        with open(self.ship_dir + '/' + 'config.json', 'r') as f:
+            self.ship_config = json.load(f)
 
         self.state = State()
 
-        if test:
+        if config['test']:
             self.debug = True
-            self.test = Tests()
+            self.tests = config['tests']
 
     def center_ship(self, back=False):
         debug = self.debug
-        opt = self.ship.Radar
+        opt = self.ship_config['radar']
 
         frame = get_frame()
-        frame = frame[opt.radar_crop_y1:opt.radar_crop_y2, opt.radar_crop_x1:opt.radar_crop_x2]
+        frame = frame[opt['radar_crop_y1']:opt['radar_crop_y2'], opt['radar_crop_x1']:opt['radar_crop_x2']]
         frame = cv2.resize(frame, (0, 0), fx=2, fy=2.12)
 
         debug_img = None
@@ -135,12 +136,14 @@ class Runner:
                 mask = cv2.erode(thresh.copy(), kernel, iterations=3)
                 contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[1]
                 if len(contours) > 0:
-                    cnt = max(contours, key=cv2.contourArea)
+                    cnt = get_contour_by_size(contours, 10, 10, 3)
                     M = cv2.moments(cnt)
                     if M['m00'] > 0:
                         cx = int(M['m10']/M['m00'])
                         cy = int(M['m01']/M['m00'])
                         point_position = 1
+                    else:
+                        error = True
                 else:
                     # get back point
                     lower_mask = np.array([240, 0, 0])
@@ -153,14 +156,19 @@ class Runner:
 
                         contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[1]
                         if len(contours) > 0:
-                            cnt = max(contours, key=cv2.contourArea)
+                            cnt = get_contour_by_size(contours, 47, 47, 2)
                             M = cv2.moments(cnt)
                             if M['m00'] > 0:
                                 cx = int(M['m10']/M['m00'])
                                 cy = int(M['m01']/M['m00'])
                                 point_position = 2
+                            else:
+                                error = True
+                        else:
+                            error = True
                     else:
                         print 'ERROR: MASK IS NULL!'
+                        error = True
 
                 if debug_img is not None:
                     if cx is not None and cy is not None:
@@ -187,61 +195,63 @@ class Runner:
                 deltaX = width/2 - cx
                 deltaY = height/2 - cy
 
+                margin = opt['margin']
+
                 if not back:
                     if point_position == 1:
-                        if deltaX < -opt.margin:
+                        if deltaX < -margin:
                             keys.append(Buttons.D)
-                        elif deltaX > opt.margin:
+                        elif deltaX > margin:
                             keys.append(Buttons.A)
 
-                        if deltaY < -opt.margin:
+                        if deltaY < -margin:
                             keys.append(Buttons.NP_2)
-                        elif deltaY > opt.margin:
+                        elif deltaY > margin:
                             keys.append(Buttons.NP_8)
 
                     elif point_position == 2:
-                        if deltaX < -opt.margin:
+                        if deltaX < -margin:
                             keys.append(Buttons.D)
                         else:
                             keys.append(Buttons.A)
 
-                        if deltaY < -opt.margin:
+                        if deltaY < -margin:
                             keys.append(Buttons.NP_2)
                         else:
                             keys.append(Buttons.NP_8)
                 else:
                     if point_position == 1:
-                        if deltaX < -opt.margin:
+                        if deltaX < -margin:
                             keys.append(Buttons.A)
                         else:
                             keys.append(Buttons.D)
 
-                        if deltaY < -opt.margin:
+                        if deltaY < -margin:
                             keys.append(Buttons.NP_8)
                         else:
                             keys.append(Buttons.NP_2)
 
                     elif point_position == 2:
-                        if deltaX < -opt.margin:
+                        if deltaX < -margin:
                             keys.append(Buttons.A)
-                        elif deltaX > opt.margin:
+                        elif deltaX > margin:
                             keys.append(Buttons.D)
 
-                        if deltaY < -opt.margin:
+                        if deltaY < -margin:
                             keys.append(Buttons.NP_8)
-                        elif deltaY > opt.margin:
+                        elif deltaY > margin:
                             keys.append(Buttons.NP_2)
 
-                click_keys(keys, opt.move_time)
+                click_keys(keys, opt['move_time'])
 
         return len(keys) > 0, error, debug_img
 
     def is_refueling(self):
         debug = self.debug
-        opt = self.ship.Refuel
+        opt = self.ship_config['refuel']
 
         frame = get_frame()
-        crop = frame[opt.need_refuel_crop_y1:opt.need_refuel_crop_y2, opt.need_refuel_crop_x1:opt.need_refuel_crop_x2]
+        crop = frame[opt['need_refuel_crop_y1']:opt['need_refuel_crop_y2'], opt['need_refuel_crop_x1']:opt['need_refuel_crop_x2']]
 
         lower_mask = np.array([240, 240, 240])
         upper_mask = np.array([255, 255, 255])
@@ -257,10 +267,10 @@ class Runner:
 
     def need_refuel(self):
         debug = self.debug
-        opt = self.ship.Refuel
+        opt = self.ship_config['refuel']
 
         frame = get_frame()
-        crop = frame[opt.need_refuel_crop_y1:opt.need_refuel_crop_y2, opt.need_refuel_crop_x1:opt.need_refuel_crop_x2]
+        crop = frame[opt['need_refuel_crop_y1']:opt['need_refuel_crop_y2'], opt['need_refuel_crop_x1']:opt['need_refuel_crop_x2']]
 
         red = crop.copy()
         red[:, :, 0] = 0
@@ -269,11 +279,7 @@ class Runner:
         upper_mask = np.array([0, 0, 255])
         gray = cv2.inRange(red, lower_mask, upper_mask)
 
-        # gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-        # gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
-
         kernel = np.ones((4, 4), np.uint8)
-        #dilation = cv2.dilate(gray, kernel, iterations=1)
         erosion = cv2.erode(gray, kernel, iterations=1)
 
         contours = cv2.findContours(erosion, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[1]
@@ -289,7 +295,7 @@ class Runner:
         if debug:
             debug_image = join_images(crop, cv2.cvtColor(erosion, cv2.COLOR_GRAY2RGB))
 
-        return opt.min_refuel > w, debug_image, w
+        return opt['min_refuel'] > w, debug_image, w
 
     def select_first_star(self, use_template=False):
         debug = self.debug
@@ -309,21 +315,21 @@ class Runner:
         debug_image = None
 
         if use_template:
-            opt = self.ship.Menu
+            opt = self.ship_config['menu']
 
             time.sleep(1)
 
             frame = get_frame()
-            crop = frame[opt.select_menu_y1:opt.select_menu_y2, opt.select_menu_x1:opt.select_menu_x2]
+            crop = frame[opt['select_menu_y1']:opt['select_menu_y2'], opt['select_menu_x1']:opt['select_menu_x2']]
 
             gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
             gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
 
-            if match_template(gray, 'images/unlock.png', 0.75)[0]:
+            if match_template(gray, self.ship_dir + '/images/unlock.png', 0.75)[0]:
                 click_keys([Buttons.W], 0.1)
                 click_keys([Buttons.SPACE], 0.1)
                 result = True
-            elif match_template(gray, 'images/lock.png', 0.75)[0]:
+            elif match_template(gray, self.ship_dir + '/images/lock.png', 0.75)[0]:
                 click_keys([Buttons.SPACE], 0.1)
                 result = True
 
@@ -339,10 +345,10 @@ class Runner:
 
     def avoid(self, last_keys=None, speed=1):
         debug = self.debug
-        opt = self.ship.Avoid
+        opt = self.ship_config['avoid']
 
         frame = get_frame()
-        crop = frame[opt.danger_zone_crop_y1:opt.danger_zone_crop_y2, opt.danger_zone_crop_x1:opt.danger_zone_crop_x2]
+        crop = frame[opt['danger_zone_crop_y1']:opt['danger_zone_crop_y2'], opt['danger_zone_crop_x1']:opt['danger_zone_crop_x2']]
 
         debug_image = None
         if debug:
@@ -354,7 +360,7 @@ class Runner:
 
         kernel = np.ones((8, 8), np.uint8)
         erosion = cv2.erode(mask, kernel, iterations=4)
-        dilation = cv2.dilate(erosion, kernel, iterations=20)
+        dilation = cv2.dilate(erosion, kernel, iterations=10)
 
         mask = dilation
 
@@ -372,30 +378,48 @@ class Runner:
             M = cv2.moments(contour)
             cX = int(M["m10"] / M["m00"])
             cY = int(M["m01"] / M["m00"])
+
             cv2.circle(crop, (cX, cY), 7, (0, 0, 0), -1)
-            deltaX = opt.avoid_center_x - cX
-            deltaY = opt.avoid_center_y - cY
+            cv2.circle(crop, (opt['avoid_center_x'], opt['avoid_center_y']), 7, (255, 0, 0), -1)
+
+            deltaX = opt['avoid_center_x'] - cX
+            deltaY = opt['avoid_center_y'] - cY
 
             if deltaX < 5 and deltaX > -5:
                 deltaX = 0
             if deltaY < 5 and deltaY > -5:
                 deltaY = 0
 
-        keys = []
-        if last_keys is not None:
-            keys = last_keys
-        elif M is not None:
-            if deltaX <= 0:
+        keys = []  
+        if M is not None:
+            if deltaX < 0 and last_keys is None:
                 keys.append(Buttons.A)
-
-            elif deltaX > 0:
+            elif deltaX > 0 and last_keys is None:
+                keys.append(Buttons.D)
+            elif last_keys is not None and Buttons.A in last_keys:
+                keys.append(Buttons.A)
+            elif last_keys is not None and Buttons.D in last_keys:
+                keys.append(Buttons.D)
+            elif deltaX < 0 and last_keys is not None and Buttons.A not in last_keys:
+                keys.append(Buttons.A)
+            elif deltaX > 0 and last_keys is not None and Buttons.D not in last_keys:
                 keys.append(Buttons.D)
 
-            if deltaY >= 0:
+            if deltaY > 0 and last_keys is None:
                 keys.append(Buttons.NP_2)
-
-            if deltaY < 0:
+            elif last_keys is None:
                 keys.append(Buttons.NP_8)
+            elif last_keys is not None and Buttons.NP_2 in last_keys:
+                keys.append(Buttons.NP_2)
+            elif last_keys is not None and Buttons.NP_8 in last_keys:
+                keys.append(Buttons.NP_8)
+            elif deltaY > 0 and last_keys is not None and Buttons.NP_2 not in last_keys:
+                keys.append(Buttons.NP_2)
+            elif last_keys is not None and Buttons.NP_8 not in last_keys:
+                keys.append(Buttons.NP_8)
+
+        elif last_keys is not None:
+            keys = last_keys
 
         if len(keys) > 0:
             click_keys(keys, speed)
@@ -407,10 +431,10 @@ class Runner:
 
     def is_jumping(self):
         debug = self.debug
-        opt = self.ship.Radar
+        opt = self.ship_config['radar']
 
         frame = get_frame()
-        crop = frame[opt.radar_crop_y1:opt.radar_crop_y2, opt.radar_crop_x1:opt.radar_crop_x2]
+        crop = frame[opt['radar_crop_y1']:opt['radar_crop_y2'], opt['radar_crop_x1']:opt['radar_crop_x2']]
 
         lower_mask = np.array([200, 200, 200])
         upper_mask = np.array([255, 255, 255])
@@ -442,12 +466,12 @@ class Runner:
 
     def can_refuel(self):
         debug = self.debug
-        opt = self.ship.Refuel
+        opt = self.ship_config['refuel']
 
         result = False
 
         frame = get_frame()
-        crop = frame[opt.can_refuel_crop_y1:opt.can_refuel_crop_y2, opt.can_refuel_crop_x1:opt.can_refuel_crop_x2]
+        crop = frame[opt['can_refuel_crop_y1']:opt['can_refuel_crop_y2'], opt['can_refuel_crop_x1']:opt['can_refuel_crop_x2']]
 
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
         gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
@@ -456,45 +480,44 @@ class Runner:
 
         star_type = None
         ignore_print = False
-
-        is_white_dwarf = match_template(gray, 'images/da.png', opt.threshold)[0]
-        is_black_hole = match_template(gray, 'images/black.png', opt.threshold)[0]
-
-        if not is_white_dwarf and not is_black_hole:
-            if match_template(gray, 'images/sc.png', opt.threshold)[0]:
-                print 'STAR IS SCANNED'
-                star_type = 'S'
-                ignore_print = True
-            elif match_template(gray, 'images/m.png', opt.threshold)[0]:
-                star_type = 'M'
-                result = True
-            elif match_template(gray, 'images/k.png', opt.threshold)[0]:
-                star_type = 'K'
-                result = True
-            elif match_template(gray, 'images/g.png', opt.threshold)[0]:
-                star_type = 'G'
-                result = True
-            elif match_template(gray, 'images/f.png', opt.threshold)[0]:
-                star_type = 'F'
-                result = True
-            elif match_template(gray, 'images/a.png', opt.threshold)[0]:
-                star_type = 'A'
-                result = True
-            elif match_template(gray, 'images/b.png', opt.threshold)[0]:
-                star_type = 'B'
-                result = True
-            elif match_template(gray, 'images/0.png', opt.threshold)[0]:
-                star_type = '0'
-                result = True
-            elif match_template(gray, 'images/un.png', opt.threshold)[0]:
-                print 'STAR IS UNEXPLORED, WHY?'
-                ignore_print = True
-        elif is_white_dwarf:
+        
+        threshold = opt['threshold']
+        if match_template(gray, self.ship_dir + '/images/da.png', threshold)[0] or match_template(gray, self.ship_dir + '/images/dc.png', threshold)[0]:
             print 'STAR IS WHITE DWARF'
+            star_type = 'I' #ignore
             ignore_print = True
-        elif is_black_hole:
+        elif match_template(gray, self.ship_dir + '/images/black.png', threshold)[0]:
             print 'STAR IS BLACK HOLE'
+            star_type = 'I' #ignore
             ignore_print = True
+        elif match_template(gray, self.ship_dir + '/images/sc.png', threshold)[0]:
+            print 'STAR IS SCANNED'
+            star_type = 'S' #scanning
+            ignore_print = True
+        elif match_template(gray, self.ship_dir + '/images/m.png', threshold)[0]:
+            star_type = 'M'
+            result = True
+        elif match_template(gray, self.ship_dir + '/images/k.png', threshold)[0]:
+            star_type = 'K'
+            result = True
+        elif match_template(gray, self.ship_dir + '/images/g.png', threshold)[0]:
+            star_type = 'G'
+            result = True
+        elif match_template(gray, self.ship_dir + '/images/f.png', threshold)[0]:
+            star_type = 'F'
+            result = True
+        elif match_template(gray, self.ship_dir + '/images/a.png', threshold)[0]:
+            star_type = 'A'
+            result = True
+        elif match_template(gray, self.ship_dir + '/images/b.png', threshold)[0]:
+            star_type = 'B'
+            result = True
+        elif match_template(gray, self.ship_dir + '/images/0.png', threshold)[0]:
+            star_type = '0'
+            result = True
+        elif match_template(gray, self.ship_dir + '/images/un.png', threshold)[0]:
+            print 'STAR IS UNEXPLORED, WHY?'
+            ignore_print = True            
 
         if not ignore_print:
             if star_type is not None:
@@ -510,10 +533,10 @@ class Runner:
 
     def is_in_jump(self):
         debug = self.debug
-        opt = self.ship.Jump
+        opt = self.ship_config['jump']
 
         frame = get_frame()
-        crop = frame[opt.in_jump_crop_y1:opt.in_jump_crop_y2, opt.in_jump_crop_x1:opt.in_jump_crop_x2]
+        crop = frame[opt['in_jump_crop_y1']:opt['in_jump_crop_y2'], opt['in_jump_crop_x1']:opt['in_jump_crop_x2']]
 
         lower_mask = np.array([250, 250, 250])
         upper_mask = np.array([255, 255, 255])
@@ -540,7 +563,7 @@ class Runner:
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        result, loc = match_template(gray, 'images/route.png', 0.8)
+        result, loc = match_template(gray, self.ship_dir + '/images/route.png', 0.8)
 
         click_keys([Buttons.BUTTON_1], 0.1)
 
@@ -553,6 +576,42 @@ class Runner:
 
         return result, debug_image
 
+    def is_fuel_scoop_active(self):
+        debug = self.debug
+        opt = self.ship_config['refuel']
+
+        is_active = False
+
+        frame = get_frame()
+        crop = frame[opt['fuel_scoop_crop_y1']:opt['fuel_scoop_crop_y2'], opt['fuel_scoop_crop_x1']:opt['fuel_scoop_crop_x2']]
+
+        debug_image = None
+        if debug:
+            debug_image = crop.copy()
+            
+        crop[:, :, 0] = 0
+        crop[:, :, 1] = 0
+
+        lower_mask = np.array([0, 0, 252])
+        upper_mask = np.array([0, 0, 255])
+        
+        gray = cv2.inRange(crop, lower_mask, upper_mask)
+
+        kernel = np.ones((2, 2), np.uint8)
+        erosion = cv2.erode(gray, kernel, iterations=1)
+        kernel = np.ones((2, 2), np.uint8)
+        dilation = cv2.dilate(erosion, kernel, iterations=4)
+
+        contours = cv2.findContours(dilation, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[1]
+
+        if len(contours) > 0:
+            is_active = True
+
+        if debug:
+            debug_image = join_images(debug_image, cv2.cvtColor(dilation, cv2.COLOR_GRAY2RGB))
+
+        return is_active, debug_image
+
     def set_state_type(self, state_type):
         if self.state.type is not StateType.END and self.state.type is not StateType.INIT:
             self.state.type = state_type
@@ -563,11 +622,11 @@ class Runner:
     def start_scan(self):
         print 'START SCAN'
         press_key(Buttons.NP_P)
-        r = Timer(self.ship.Scanner.scan_system_time, self.end_scan)
+        r = Timer(self.ship_config['scanner']['scan_system_time'], self.end_scan)
         r.start()
 
     def end_scan(self):
-        print('END SCAN')
+        print 'END SCAN'
         release_key(Buttons.NP_P)
 
     def jump_fail(self):
@@ -588,8 +647,8 @@ class Runner:
 
     def run(self):
         if self.state.type.value > 0:
-            if self.test is not None:
-                self.run_test()
+            if self.tests is not None:
+                self.run_tests()
             else:
                 self.run_main()
         else:
@@ -627,7 +686,10 @@ class Runner:
         # start
         if state.type == StateType.START:
             state.jump_start_time = time.time()
-            self.set_state_type(StateType.TURN_FORWARD)
+            if self.disable_star_scan:
+                self.set_state_type(StateType.CHECK_REFUEL)
+            else:
+                self.set_state_type(StateType.TURN_FORWARD)
 
         # turn forward
         elif state.type == StateType.TURN_FORWARD:
@@ -647,19 +709,48 @@ class Runner:
                 state.count = 0
                 state.star_type = None
                 state.refueled = False
-                self.set_state_type(StateType.CHECK_REFUEL_AND_SCAN_STAR)
+                if self.disable_star_scan:
+                    self.set_state_type(StateType.REFUELING)
+                else:
+                    self.set_state_type(StateType.CHECK_REFUEL_AND_SCAN_STAR)
                 time.sleep(1)
+
+        # check refuel
+        elif state.type == StateType.CHECK_REFUEL:
+            print 'CHECK REFUEL: ' + str(state.count)
+
+            need, debug_image, _ = self.need_refuel()
+            debug_images.append(debug_image)
+            if need:
+                state.count += 1
+            else:
+                state.count -= 1
+
+            # 2 attempts for determining the width of the fuel bar
+            if state.count > 2:
+                print 'START REFUEL'
+                state.count = 0
+                self.set_state_type(StateType.TURN_FORWARD)
+                state.avoid_speed = self.ship_config['avoid']['avoid_speed_fast']
+            elif state.count < -2:
+                print 'NO NEED REFUEL'
+                state.count = 0
+                state.refueled = False
+                self.set_state_type(StateType.AVOID)
+                state.avoid_speed = self.ship_config['avoid']['avoid_speed_slow'] / 2
 
         # check refuel and scan star
         elif state.type == StateType.CHECK_REFUEL_AND_SCAN_STAR:
             print 'CHECK REFUEL: ' + str(state.count)
+
+            can = False
 
             if state.star_type is None:
                 can, star_type, debug_image = self.can_refuel()
                 debug_images.append(debug_image)
                 if star_type is not None:
                     state.star_type = star_type
-            else:
+            elif state.star_type is not "I":
                 can = True
 
             need, debug_image, _ = self.need_refuel()
@@ -669,7 +760,7 @@ class Runner:
             elif state.star_type is not None and state.star_type is "S":
                 state.count = 0
                 state.star_type = None
-                time.sleep(self.ship.Scanner.scan_surface_time)
+                time.sleep(self.ship_config['scanner']['scan_surface_time'])
             else:
                 state.count -= 1
                 if state.star_type is None:
@@ -679,15 +770,15 @@ class Runner:
                 print 'START REFUEL'
                 state.count = 0
                 self.set_state_type(StateType.REFUELING)
-                state.avoid_speed = self.ship.Avoid.avoid_speed_fast
+                state.avoid_speed = self.ship_config['avoid']['avoid_speed_fast']
             # 2 attempts for determining the width of the fuel bar
             elif state.count < -2 and can:
                 print 'NO NEED REFUEL'
                 state.count = 0
                 self.set_state_type(StateType.AVOID)
-                state.avoid_speed = self.ship.Avoid.avoid_speed_slow
+                state.avoid_speed = self.ship_config['avoid']['avoid_speed_slow']
             # can be problem with detect star type that's why 10 attempts
-            elif state.count < -10 and not can:
+            elif (state.count < -10 or state.count < -2 and state.star_type is "I") and not can:
                 print 'WARNING: TRYING TURN AROUND...'
                 state.count = 0
                 self.set_state_type(StateType.TURN_AROUND)
@@ -716,14 +807,14 @@ class Runner:
                 else:
                     state.count -= 1
 
-                if state.count > 10:
+                if state.count > 2:
                     print 'YES, GO TO STAR CLOSER'
                     state.count = 0
                     click_keys([Buttons.C], 0.1)
                     debug_image = self.center_ship()[2]
                     debug_images.append(debug_image)
 
-                elif state.count < -10:
+                elif state.count < -2:
                     print 'NO, NO NEED REFUEL'
                     state.count = 0
                     state.refueled = True
@@ -747,8 +838,7 @@ class Runner:
                 print 'AVOIDED'
                 state.count = 0
                 if state.refueled:
-                    click_keys([Buttons.W], self.ship.go_ahead_time / 2)
-                    self.set_state_type(StateType.GO_AHEAD)
+                    self.set_state_type(StateType.FUEL_SCOOP_ACTIVE)
                 else:
                     self.set_state_type(StateType.AUTO_REFUEL)
 
@@ -790,12 +880,25 @@ class Runner:
             if state.count > 100:
                 print 'AUTO REFUELING FINISHED'
                 state.count = 0
+                self.set_state_type(StateType.FUEL_SCOOP_ACTIVE)
+
+        # fuel scoop active
+        elif state.type == StateType.FUEL_SCOOP_ACTIVE:
+            print 'IS FUEL SCOOP ACTIVE?'
+            is_active, debug_image = self.is_fuel_scoop_active()
+            debug_images.append(debug_image)
+
+            if is_active:
+                print 'YES! GO AHEAD!'
+                click_keys([Buttons.W], 0.1)
+            else:
+                print 'NO! PREPARE TO JUMP'
                 self.set_state_type(StateType.GO_AHEAD)
 
         # go to jump
         elif state.type == StateType.GO_AHEAD:
             print 'GO GO GO!'
-            click_keys([Buttons.W], self.ship.go_ahead_time)
+            click_keys([Buttons.W], self.ship_config['go_ahead_time'])
             click_keys([Buttons.V], 0.1)
             click_keys([Buttons.T], 0.1)
             self.set_state_type(StateType.JUMP)
@@ -819,6 +922,7 @@ class Runner:
                 print 'JUMPING!'
                 click_keys([Buttons.M], 0.1)
                 state.count = 0
+                state.jumping_start_time = time.time()
                 state.jump_started = False
                 self.set_state_type(StateType.JUMPING)
 
@@ -830,7 +934,11 @@ class Runner:
             if jumping:
                 if not state.jump_started:
                     print 'JUMP DETECTED, GET READY!'
-                    time.sleep(self.ship.Jump.jump_load_time)
+                    jumping_end_time = time.time()
+                    sleep_time = self.ship_config['jump']['jump_load_time'] - (jumping_end_time - state.jumping_start_time)
+                    if sleep_time < 0:
+                        sleep_time = 0.1
+                    time.sleep(sleep_time)
                     click_keys([Buttons.W], 2)
                     state.jump_started = True
                     state.jump_timer = Timer(60, self.jump_fail)
@@ -890,23 +998,33 @@ class Runner:
             if state.count > 10:
                 if state.jump_start_time is not None:
                     jump_end_time = time.time()
-                    print('JUMP FINISHED IN %.2f!' % ((jump_end_time - state.jump_start_time) / 60))
+                    print 'JUMP FINISHED IN %.2fs!' % (jump_end_time - state.jump_start_time)
                 else:
-                    print('JUMP FINISHED!')
+                    print 'JUMP FINISHED!'
                 self.start_scan()
                 debug_image = self.select_first_star()[1]
                 debug_images.append(debug_image)
                 time.sleep(1)
                 state.count = 0
-                self.set_state_type(StateType.START)
+                if self.number_jumps < 0:
+                    self.set_state_type(StateType.START)
+                else:
+                    self.number_jumps -= 1
+                    if self.number_jumps is 0:
+                        print 'THE ROUTE IS OVER!'
+                        self.set_state_type(StateType.STOP)
+                        if self.shutdown:
+                            os.system('shutdown -s')
+                    else:
+                        self.set_state_type(StateType.START)
 
         # draw debug images
         if self.debug:
             show_images([image for image in debug_images if image is not None])
 
-    def run_test(self):
+    def run_tests(self):
         # center_ship
-        if self.test.center_ship:
+        if self.tests['center_ship']:
             centered, _, debug_image = self.center_ship()
             cv2.imshow('Debug', debug_image)
             if centered:
@@ -916,7 +1034,7 @@ class Runner:
             cv2.waitKey(50)
 
         # select_first_star
-        if self.test.select_first_star:
+        if self.tests['select_first_star']:
             selected, debug_image = self.select_first_star(True)
             if debug_image is not None:
                 cv2.imshow('Debug', debug_image)
@@ -927,7 +1045,7 @@ class Runner:
             cv2.waitKey(1000)
 
         # can_refuel
-        if self.test.can_refuel:
+        if self.tests['can_refuel']:
             _, s_type, debug_image = self.can_refuel()
             cv2.imshow('Debug', debug_image)
             if s_type is not None:
@@ -936,8 +1054,18 @@ class Runner:
                 print "problem with can_refuel or you can't refuel from this star"
             cv2.waitKey(1000)
 
+        # is_fuel_scoop_active
+        if self.tests['is_fuel_scoop_active']:
+            is_active, debug_image = self.is_fuel_scoop_active()
+            cv2.imshow('Debug', debug_image)
+            if is_active:
+                print "is_fuel_scoop_active works"
+            else:
+                print "problem with is_fuel_scoop_active or fuel scoop is not active"
+            cv2.waitKey(1000)
+
         # need_refuel
-        if self.test.need_refuel:
+        if self.tests['need_refuel']:
             need, debug_image, w = self.need_refuel()
             cv2.imshow('Debug', debug_image)
             if need is not None:
@@ -947,7 +1075,7 @@ class Runner:
             cv2.waitKey(1000)
 
         # is_in_route
-        if self.test.is_in_route:
+        if self.tests['is_in_route']:
             in_route, debug_image = self.is_in_route()
             cv2.imshow('Debug', debug_image)
             if in_route:
@@ -957,7 +1085,7 @@ class Runner:
             cv2.waitKey(1000)
 
         # avoid
-        if self.test.avoid:
+        if self.tests['avoid']:
             avoided, _, debug_image = self.avoid(None, self.state.avoid_speed)
             cv2.imshow('Debug', debug_image)
             if avoided:
